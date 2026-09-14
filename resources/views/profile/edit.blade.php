@@ -1,29 +1,8 @@
 <x-app-layout>
-    <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('Profile') }}
-        </h2>
-    </x-slot>
-
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
-            <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
-                <div class="max-w-xl">
-                    @include('profile.partials.update-profile-information-form')
-                </div>
-            </div>
-
-            <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
-                <div class="max-w-xl">
-                    @include('profile.partials.update-password-form')
-                </div>
-            </div>
-
-            <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
-                <div class="max-w-xl">
-                    @include('profile.partials.delete-user-form')
-                </div>
-            </div>
-        </div>
-    </div>
+    <x-slot name="header"><div><p class="small text-success fw-bold mb-1">الحساب</p><h1 class="h3 mb-0">إعدادات الحساب</h1></div></x-slot>
+    <div class="container-fluid py-4 px-3 px-lg-4"><x-ui.alert /><x-organizer.setup-progress /><div class="row g-4">
+        <div class="col-12 col-xl-8"><div class="card hafez-card border-0 mb-4"><div class="card-body p-4">@include('profile.partials.update-profile-information-form')</div></div><div class="card hafez-card border-0 mb-4"><div class="card-body p-4">@include('profile.partials.update-password-form')</div></div><div class="card border-danger border-opacity-25 shadow-sm"><div class="card-body p-4">@include('profile.partials.delete-user-form')</div></div></div>
+        <div class="col-12 col-xl-4"><div class="card hafez-card border-0 h-100"><div class="card-body p-4"><h2 class="h5 mb-2">نظرة عامة على الحساب</h2><dl class="row small mb-4"><dt class="col-5 text-muted">الحالة</dt><dd class="col-7"><x-ui.status-badge :status="$user->status" /></dd><dt class="col-5 text-muted">تاريخ الإنشاء</dt><dd class="col-7">{{ $user->created_at?->format('Y-m-d') }}</dd></dl><h2 class="h5 mb-2">هوية المنظم العامة</h2><p class="text-muted small">يُستخدم اسم المستخدم في إنشاء روابط التسجيل العامة لمسابقاتك.</p>@if($user->username)<div class="d-flex justify-content-between align-items-center gap-2 mb-3"><span class="text-muted">اسم المستخدم</span><code dir="ltr">{{ $user->username }}</code></div><div class="input-group input-group-sm" dir="ltr"><input id="profile-username" class="form-control" value="{{ $user->username }}" readonly aria-label="اسم المستخدم"><button type="button" class="btn btn-outline-success" data-copy-username>نسخ</button></div><div class="small text-success mt-2 d-none" data-username-feedback role="status">تم نسخ اسم المستخدم</div>@else<div class="alert alert-warning"><strong class="d-block mb-1">أكمل إعداد حسابك</strong>حسابك تم إنشاؤه قبل تفعيل الروابط العامة للمسابقات. أضف اسم مستخدم لإنشاء روابط احترافية لمسابقاتك.<a href="#username" class="btn btn-sm btn-warning mt-3">إضافة اسم مستخدم</a></div>@endif<div class="small text-muted mt-3">مثال للرابط: <span dir="ltr">/competitions/username/1</span></div></div></div></div>
+    </div></div>
+    @if($user->username)<script>document.querySelector('[data-copy-username]')?.addEventListener('click',async function(){const i=document.getElementById('profile-username');try{await navigator.clipboard.writeText(i.value)}catch(_){i.select();document.execCommand('copy')}document.querySelector('[data-username-feedback]')?.classList.remove('d-none')});</script>@endif
 </x-app-layout>

@@ -26,11 +26,9 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
-
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
-        }
+        // Email is an immutable account identifier. Only explicitly allowed
+        // profile fields are filled, even if a client submits email manually.
+        $request->user()->fill($request->safe()->except(['email']));
 
         $request->user()->save();
 

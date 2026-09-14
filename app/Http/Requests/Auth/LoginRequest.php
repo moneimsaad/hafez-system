@@ -42,7 +42,13 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        $credentials = $this->only('email', 'password');
+        $credentials['status'] = 'active';
+
+        if (! Auth::attempt($credentials, $this->boolean('remember'))
+            || ! in_array(Auth::user()?->role, ['Platform Admin', 'User'], true)
+            || ! Auth::user()?->hasVerifiedEmail()) {
+            Auth::logout();
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([

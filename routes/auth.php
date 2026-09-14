@@ -5,8 +5,10 @@ use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
 use App\Http\Controllers\Auth\NewPasswordController;
+use App\Http\Controllers\Auth\OtpVerificationController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\Auth\OrganizerRegistrationController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,11 +18,34 @@ Route::middleware('guest')->group(function () {
 
     Route::post('login', [AuthenticatedSessionController::class, 'store']);
 
+    Route::get('register', [OrganizerRegistrationController::class, 'create'])
+        ->name('register');
+
+    Route::post('register', [OrganizerRegistrationController::class, 'store'])->middleware('throttle:registration-request');
+
+    Route::get('organizer/register', [OrganizerRegistrationController::class, 'create'])->name('organizer.register');
+    Route::post('organizer/register', [OrganizerRegistrationController::class, 'store'])->middleware('throttle:registration-request')->name('organizer.register.store');
+
     Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
         ->name('password.request');
 
     Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->middleware('throttle:password-reset-request')
         ->name('password.email');
+
+    Route::get('otp/verify', [OtpVerificationController::class, 'create'])
+        ->name('otp.verify.form');
+
+    Route::post('otp/verify', [OtpVerificationController::class, 'store'])
+        ->middleware('throttle:otp-verify')
+        ->name('otp.verify');
+
+    Route::post('otp/resend', [OtpVerificationController::class, 'resend'])
+        ->middleware('throttle:otp-resend')
+        ->name('otp.resend');
+
+    Route::get('reset-password', fn () => redirect()->route('password.request'))
+        ->name('password.reset.request');
 
     Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])
         ->name('password.reset');
@@ -29,7 +54,7 @@ Route::middleware('guest')->group(function () {
         ->name('password.store');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'active'])->group(function () {
     Route::get('verify-email', EmailVerificationPromptController::class)
         ->name('verification.notice');
 

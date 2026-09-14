@@ -1,36 +1,32 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="csrf-token" content="{{ csrf_token() }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="rtl">
 
-        <title>{{ config('app.name', 'Laravel') }}</title>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{{ app(\App\Services\PlatformSettingsService::class)->get('platform.name', config('app.name', 'Hafez System')) }}</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
 
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+<body class="hafez-app">
+    @include('layouts.navigation')
+    <div class="hafez-shell">
+        <aside class="hafez-sidebar">
+            <button type="button" class="hafez-sidebar-toggle d-none d-lg-inline-flex" data-sidebar-toggle aria-expanded="true" aria-controls="desktop-sidebar">
+                <span class="hafez-sidebar-toggle__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false"><path d="m14.5 5-7 7 7 7" /></svg>
+                </span>
+                <span class="visually-hidden">طي القائمة الجانبية</span>
+            </button>
+            <div id="desktop-sidebar" class="h-100">@include('layouts.sidebar')</div>
+        </aside>
+        <main class="hafez-content">
+            <x-ui.breadcrumbs />
+            @isset($header)<header class="hafez-page-header">{{ $header }}</header>@endisset
+            {{ $slot }}
+        </main>
+    </div>
+</body>
 
-        <!-- Scripts -->
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
-    </head>
-    <body class="font-sans antialiased">
-        <div class="min-h-screen bg-gray-100">
-            @include('layouts.navigation')
-
-            <!-- Page Heading -->
-            @isset($header)
-                <header class="bg-white shadow">
-                    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-                        {{ $header }}
-                    </div>
-                </header>
-            @endisset
-
-            <!-- Page Content -->
-            <main>
-                {{ $slot }}
-            </main>
-        </div>
-    </body>
 </html>

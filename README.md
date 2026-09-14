@@ -1,59 +1,137 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Hafez System
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Hafez System is a Laravel-based platform for managing educational competitions from initial setup through public certificate verification.
 
-## About Laravel
+## Project overview
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+The platform centralizes competition administration, participant registration, committee assignment, evaluation, results, and certificates in one workflow. It reduces manual coordination, improves data consistency, and gives participants a clear way to review registration information and verify issued certificates.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+### Target users
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- Platform administrators
+- Competition organizers
+- Students and participants
+- Members of evaluation committees
+- Public users verifying certificates
 
-## Learning Laravel
+## Main features
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- Secure authentication with account verification and OTP-based email flows
+- Organizer account and profile management
+- Competition creation and lifecycle management
+- Public participant registration
+- Registration review and participant management
+- Competition levels and categories
+- Committee assignment
+- Evaluation and score entry
+- Results and rankings
+- Certificate generation with QR-code support
+- Public certificate verification
+- Reports and organizer dashboards
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Technology stack
 
-## Laravel Sponsors
+| Area | Technology |
+| --- | --- |
+| Backend | PHP 8.2+ and Laravel 12 |
+| Database | SQLite for local development; MySQL-compatible database for production |
+| Frontend | Blade, Bootstrap 5, Tailwind CSS tooling, Alpine.js, and Flatpickr |
+| Asset tooling | Vite, npm, PostCSS, and Autoprefixer |
+| Email | Laravel Mail with SMTP support |
+| Background jobs | Laravel database queue with a worker on supported hosting |
+| Documents and verification | DOMPDF and QR Code generation |
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Requirements
 
-### Premium Partners
+- PHP 8.2 or later
+- Composer
+- Node.js and npm
+- SQLite for a lightweight local setup, or a MySQL-compatible database
+- A configured SMTP service for account and password-reset OTP emails
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Installation
 
-## Contributing
+1. Clone the repository and enter the project directory.
+2. Install PHP dependencies:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+   ```bash
+   composer install
+   ```
 
-## Code of Conduct
+3. Copy `.env.example` to `.env`.
+4. Configure the application URL, database connection, mail settings, and other environment variables. Never commit the resulting `.env` file.
+5. Generate the application key:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+   ```bash
+   php artisan key:generate
+   ```
 
-## Security Vulnerabilities
+6. Run the database migrations:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+   ```bash
+   php artisan migrate
+   ```
 
-## License
+7. If an initial administrator is required, set the `HAFEZ_ADMIN_*` environment variables locally and run:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+   ```bash
+   php artisan db:seed --class=AdminUserSeeder
+   ```
+
+8. Install and build frontend assets:
+
+   ```bash
+   npm install
+   npm run build
+   ```
+
+9. Start the local development environment:
+
+   ```bash
+   composer run dev
+   ```
+
+   The development command starts the Laravel server, Vite, and the database queue worker together.
+
+## Demo accounts
+
+Use placeholders for instructor or demonstration credentials and replace them only in the local environment:
+
+- Platform administrator email: `<demo-admin-email>`
+- Organizer email: `<demo-organizer-email>`
+- Password: `<set-locally>`
+
+Do not publish real passwords, OTPs, app passwords, or other credentials.
+
+## Testing
+
+Run the application test suite:
+
+```bash
+composer test
+```
+
+The current verification baseline is 183 tests with 1,059 assertions. The production frontend build has also been verified with:
+
+```bash
+npm run build
+```
+
+## Deployment notes
+
+- Configure production values through environment variables only, including `APP_KEY`, database credentials, application URL, session settings, and SMTP credentials.
+- Set `APP_ENV=production` and `APP_DEBUG=false` in production.
+- Build assets with `npm run build` and deploy the generated `public/build` assets. `node_modules` is not required on the web server.
+- On hosting with a persistent worker, use `QUEUE_CONNECTION=database` and keep a queue worker running for OTP email delivery.
+- For an InfinityFree demonstration deployment, use `QUEUE_CONNECTION=sync` in that deployment's environment because persistent workers are unavailable. Local development remains configured for the database queue.
+- Run migrations against the deployment database and ensure the application can write to the required storage directories.
+- Run `php artisan storage:link` where supported so public certificate files can be served correctly.
+- Certificate generation requires writable public storage and a correctly configured application URL.
+
+## Security notes
+
+- OTP codes are hashed in storage and protected by expiration, single-use invalidation, maximum attempts, cooldowns, and request rate limits.
+- Authentication, role checks, middleware, policies, and resource ownership checks protect organizer and administrative operations.
+- Database constraints help prevent duplicate registrations and evaluations.
+- SMTP credentials, application keys, passwords, and other secrets must be provided through environment variables and must not be committed to GitHub.
+- Production deployments should use HTTPS, disable debug output, restrict access to logs, and keep dependencies up to date.

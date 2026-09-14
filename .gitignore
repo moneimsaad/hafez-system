@@ -16,6 +16,28 @@
 /public/build
 /public/hot
 /public/storage
+
+# Local development and browser-debug artifacts
+/.playwright-cli/
+/output/
+/refrance/
+/tmp/
+/drafts/
+/qa-responsive-final/
+/qa-final-last-changes/
+/coverage/
+/playwright-report/
+/test-results/
+/tests/_output/
+/.env.testing
+*.tmp
+*.temp
+*.dump
+*.trace
+*.sqlite*
+*.key
+*.pem
+*.p12
 /storage/*.key
 /storage/pail
 /storage/framework/cache/*
@@ -32,6 +54,7 @@
 !/storage/app/private/.gitignore
 /storage/app/public/*
 !/storage/app/public/.gitignore
+/storage/app/public/certificates/
 /vendor
 Homestead.json
 Homestead.yaml

@@ -1,27 +1,25 @@
 <x-guest-layout>
-    <div class="mb-4 text-sm text-gray-600">
-        {{ __('This is a secure area of the application. Please confirm your password before continuing.') }}
-    </div>
-
-    <form method="POST" action="{{ route('password.confirm') }}">
-        @csrf
-
-        <!-- Password -->
-        <div>
-            <x-input-label for="password" :value="__('Password')" />
-
-            <x-text-input id="password" class="block mt-1 w-full"
-                            type="password"
-                            name="password"
-                            required autocomplete="current-password" />
-
-            <x-input-error :messages="$errors->get('password')" class="mt-2" />
+    <section class="hafez-auth-flow" aria-labelledby="confirm-password-title">
+        <div class="hafez-auth-flow__intro">
+            <span class="hafez-auth-flow__eyebrow">حماية إضافية</span>
+            <h2 id="confirm-password-title">تأكيد كلمة المرور</h2>
+            <p>أدخل كلمة المرور الحالية للمتابعة إلى هذه المنطقة الآمنة.</p>
         </div>
 
-        <div class="flex justify-end mt-4">
-            <x-primary-button>
-                {{ __('Confirm') }}
-            </x-primary-button>
-        </div>
-    </form>
+        <form method="POST" action="{{ route('password.confirm') }}" data-auth-submit data-loading-text="جاري التحقق...">
+            @csrf
+            <div>
+                <label for="password" class="form-label">كلمة المرور الحالية</label>
+                <div class="hafez-password-field">
+                    <input id="password" class="form-control @error('password') is-invalid @enderror" type="password" name="password" required autocomplete="current-password" data-password-input aria-describedby="confirm-password-error" aria-invalid="@error('password') true @else false @enderror">
+                    <button type="button" class="hafez-password-toggle" data-password-toggle data-password-target="password" data-show-label="إظهار" data-hide-label="إخفاء" aria-label="إظهار كلمة المرور" aria-controls="password" aria-pressed="false"><span data-password-toggle-label>إظهار</span></button>
+                </div>
+                @error('password') <div id="confirm-password-error" class="invalid-feedback" role="alert">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="hafez-auth-flow__actions hafez-auth-flow__actions--end">
+                <button class="btn btn-success hafez-auth-flow__submit" type="submit">تأكيد والمتابعة</button>
+            </div>
+        </form>
+    </section>
 </x-guest-layout>

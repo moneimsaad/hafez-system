@@ -9,3 +9,9 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+/.playwright-cli/** export-ignore
+/output/** export-ignore
+/refrance/** export-ignore
+/coverage/** export-ignore
+/playwright-report/** export-ignore
+/test-results/** export-ignore

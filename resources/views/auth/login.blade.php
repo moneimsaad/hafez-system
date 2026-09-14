@@ -1,47 +1,42 @@
 <x-guest-layout>
-    <!-- Session Status -->
-    <x-auth-session-status class="mb-4" :status="session('status')" />
-
-    <form method="POST" action="{{ route('login') }}">
-        @csrf
-
-        <!-- Email Address -->
-        <div>
-            <x-input-label for="email" :value="__('Email')" />
-            <x-text-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus autocomplete="username" />
-            <x-input-error :messages="$errors->get('email')" class="mt-2" />
+    <section class="hafez-auth-flow" aria-labelledby="login-title">
+        <div class="hafez-auth-flow__intro">
+            <span class="hafez-auth-flow__eyebrow">مرحباً بعودتك</span>
+            <h2 id="login-title">تسجيل الدخول</h2>
+            <p>أدخل بياناتك للوصول إلى لوحة إدارة مسابقات حفظ القرآن الكريم.</p>
         </div>
 
-        <!-- Password -->
-        <div class="mt-4">
-            <x-input-label for="password" :value="__('Password')" />
+        <x-ui.validation-errors />
+        <x-auth-session-status class="alert alert-success mb-4" :status="session('status')" />
 
-            <x-text-input id="password" class="block mt-1 w-full"
-                            type="password"
-                            name="password"
-                            required autocomplete="current-password" />
+        <form method="POST" action="{{ route('login') }}" data-auth-submit data-loading-text="جاري تسجيل الدخول...">
+            @csrf
+            <div class="mb-3">
+                <label for="email" class="form-label">البريد الإلكتروني</label>
+                <input id="email" class="form-control @error('email') is-invalid @enderror" type="email" name="email" value="{{ old('email') }}" required autofocus autocomplete="username" aria-describedby="login-email-error" aria-invalid="@error('email') true @else false @enderror">
+                @error('email') <div id="login-email-error" class="invalid-feedback" role="alert">{{ $message }}</div> @enderror
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">كلمة المرور</label>
+                <div class="hafez-password-field">
+                    <input id="password" class="form-control @error('password') is-invalid @enderror" type="password" name="password" required autocomplete="current-password" data-password-input aria-describedby="login-password-help login-password-error" aria-invalid="@error('password') true @else false @enderror">
+                    <button type="button" class="hafez-password-toggle" data-password-toggle data-password-target="password" data-show-label="إظهار" data-hide-label="إخفاء" aria-label="إظهار كلمة المرور" aria-controls="password" aria-pressed="false"><span data-password-toggle-label>إظهار</span></button>
+                </div>
+                <div id="login-password-help" class="form-text">استخدم كلمة المرور التي اخترتها عند إنشاء الحساب.</div>
+                @error('password') <div id="login-password-error" class="invalid-feedback" role="alert">{{ $message }}</div> @enderror
+            </div>
+            <div class="hafez-auth-remember mb-4">
+                <input id="remember_me" type="checkbox" class="form-check-input" name="remember" value="1">
+                <label for="remember_me" class="form-check-label">تذكرني على هذا الجهاز</label>
+            </div>
+            <div class="hafez-auth-flow__actions">
+                <a class="hafez-auth-flow__link" href="{{ route('password.request') }}">نسيت كلمة المرور؟</a>
+                <button class="btn btn-success hafez-auth-flow__submit" type="submit">تسجيل الدخول</button>
+            </div>
+        </form>
 
-            <x-input-error :messages="$errors->get('password')" class="mt-2" />
-        </div>
-
-        <!-- Remember Me -->
-        <div class="block mt-4">
-            <label for="remember_me" class="inline-flex items-center">
-                <input id="remember_me" type="checkbox" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" name="remember">
-                <span class="ms-2 text-sm text-gray-600">{{ __('Remember me') }}</span>
-            </label>
-        </div>
-
-        <div class="flex items-center justify-end mt-4">
-            @if (Route::has('password.request'))
-                <a class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" href="{{ route('password.request') }}">
-                    {{ __('Forgot your password?') }}
-                </a>
-            @endif
-
-            <x-primary-button class="ms-3">
-                {{ __('Log in') }}
-            </x-primary-button>
-        </div>
-    </form>
+        @if (Route::has('organizer.register'))
+            <p class="hafez-auth-flow__secondary-action">ليس لديك حساب؟ <a class="hafez-auth-flow__link" href="{{ route('organizer.register') }}">إنشاء حساب منظم</a></p>
+        @endif
+    </section>
 </x-guest-layout>
