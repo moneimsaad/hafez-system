@@ -3,7 +3,9 @@
 use App\Models\Competition;
 use App\Models\CompetitionBranch;
 use App\Models\CompetitionLevel;
+use App\Models\Evaluation;
 use App\Models\Registration;
+use App\Models\Result;
 use App\Models\Student;
 use App\Models\User;
 use App\Services\CompetitionLifecycleService;
@@ -52,16 +54,18 @@ test('competition lifecycle transitions are explicit and ordered', function () {
 
     $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
         'status' => CompetitionLifecycleService::PUBLISHED,
+        'expected_status' => CompetitionLifecycleService::DRAFT,
     ])->assertRedirect();
     expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::PUBLISHED);
 
     $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
         'status' => CompetitionLifecycleService::RESULTS_PUBLISHED,
+        'expected_status' => CompetitionLifecycleService::PUBLISHED,
     ])->assertSessionHasErrors('status');
 
-    app(CompetitionLifecycleService::class)->transition($competition->fresh(), CompetitionLifecycleService::REGISTRATION_OPEN);
-    app(CompetitionLifecycleService::class)->transition($competition->fresh(), CompetitionLifecycleService::REGISTRATION_CLOSED);
-    app(CompetitionLifecycleService::class)->transition($competition->fresh(), CompetitionLifecycleService::EVALUATION);
+    app(CompetitionLifecycleService::class)->transition($competition->fresh(), CompetitionLifecycleService::REGISTRATION_OPEN, CompetitionLifecycleService::PUBLISHED);
+    app(CompetitionLifecycleService::class)->transition($competition->fresh(), CompetitionLifecycleService::REGISTRATION_CLOSED, CompetitionLifecycleService::REGISTRATION_OPEN);
+    app(CompetitionLifecycleService::class)->transition($competition->fresh(), CompetitionLifecycleService::EVALUATION, CompetitionLifecycleService::REGISTRATION_CLOSED);
 
     expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::EVALUATION);
 });
@@ -84,7 +88,7 @@ test('published competitions do not accept registrations until registration is o
     $this->post(route('registrations.store'), $payload)->assertSessionHasErrors('competition_id');
     expect(Registration::query()->count())->toBe(0);
 
-    app(CompetitionLifecycleService::class)->transition($competition->fresh(), CompetitionLifecycleService::REGISTRATION_OPEN);
+    app(CompetitionLifecycleService::class)->transition($competition->fresh(), CompetitionLifecycleService::REGISTRATION_OPEN, CompetitionLifecycleService::PUBLISHED);
     $this->post(route('registrations.store'), $payload)->assertRedirect(route('registrations.success'));
     expect(Registration::query()->count())->toBe(1);
 });
@@ -168,4 +172,102 @@ test('lifecycle action guards match the competition state', function () {
     $competition->update(['status' => CompetitionLifecycleService::RESULTS_PUBLISHED]);
     expect(fn () => $lifecycle->assertAllowsResultGeneration($competition))->toThrow(ValidationException::class);
     $lifecycle->assertAllowsCertificateGeneration($competition);
+});
+
+test('registration closed advances to evaluation and evaluation safely rolls back', function () {
+    $owner = User::factory()->create();
+    $competition = lifecycleTestCompetition($owner, CompetitionLifecycleService::REGISTRATION_CLOSED);
+
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
+        'status' => CompetitionLifecycleService::EVALUATION,
+        'expected_status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
+    ])->assertRedirect();
+    expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::EVALUATION);
+
+    $this->actingAs($owner)->get(route('competitions.show', $competition))
+        ->assertOk()
+        ->assertSee('data-bs-target="#evaluation-rollback-modal"', false)
+        ->assertSee('الحالة الحالية:')
+        ->assertSee('الحالة المستهدفة:');
+
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
+        'status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
+        'expected_status' => CompetitionLifecycleService::EVALUATION,
+    ])->assertRedirect();
+    expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::REGISTRATION_CLOSED);
+});
+
+test('evaluation rollback is blocked after submitted evaluations exist', function () {
+    $owner = User::factory()->create();
+    $competition = lifecycleTestCompetition($owner, CompetitionLifecycleService::EVALUATION);
+    $branch = $competition->competitionBranches()->firstOrFail();
+    $student = Student::create([
+        'full_name' => 'Submitted Evaluation Student', 'birth_date' => '2012-01-01', 'gender' => 'Male',
+        'phone' => '01012345670', 'parent_phone' => '01112345670', 'address' => 'Address', 'city' => 'Cairo', 'center_name' => 'Center',
+    ]);
+    $registration = Registration::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id,
+        'status' => 'approved', 'registered_at' => now(),
+    ]);
+    Evaluation::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id,
+        'registration_id' => $registration->id, 'judge_id' => $owner->id,
+        'memorization_score' => 30, 'tajweed_score' => 25, 'performance_score' => 20, 'discipline_score' => 15,
+        'total_score' => 90, 'percentage' => 90, 'status' => 'submitted',
+    ]);
+
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
+        'status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
+        'expected_status' => CompetitionLifecycleService::EVALUATION,
+    ])->assertSessionHasErrors('status');
+    expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::EVALUATION);
+});
+
+test('evaluation rollback is blocked after results exist', function () {
+    $owner = User::factory()->create();
+    $competition = lifecycleTestCompetition($owner, CompetitionLifecycleService::EVALUATION);
+    $branch = $competition->competitionBranches()->firstOrFail();
+    $student = Student::create([
+        'full_name' => 'Generated Result Student', 'birth_date' => '2012-01-01', 'gender' => 'Male',
+        'phone' => '01012345671', 'parent_phone' => '01112345671', 'address' => 'Address', 'city' => 'Cairo', 'center_name' => 'Center',
+    ]);
+    $registration = Registration::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id,
+        'status' => 'approved', 'registered_at' => now(),
+    ]);
+    Result::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id,
+        'registration_id' => $registration->id, 'final_score' => 90, 'percentage' => 90,
+        'rank' => 1, 'result_status' => 'successful',
+    ]);
+
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
+        'status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
+        'expected_status' => CompetitionLifecycleService::EVALUATION,
+    ])->assertSessionHasErrors('status');
+    expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::EVALUATION);
+});
+
+test('results published and completed cannot roll back', function () {
+    foreach ([CompetitionLifecycleService::RESULTS_PUBLISHED, CompetitionLifecycleService::COMPLETED] as $status) {
+        $owner = User::factory()->create();
+        $competition = lifecycleTestCompetition($owner, $status);
+        $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
+            'status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
+            'expected_status' => $status,
+        ])->assertSessionHasErrors('status');
+        expect($competition->fresh()->status)->toBe($status);
+    }
+});
+
+test('stale competition status transitions are rejected safely', function () {
+    $owner = User::factory()->create();
+    $competition = lifecycleTestCompetition($owner, CompetitionLifecycleService::REGISTRATION_CLOSED);
+    $competition->update(['status' => CompetitionLifecycleService::EVALUATION]);
+
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
+        'status' => CompetitionLifecycleService::EVALUATION,
+        'expected_status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
+    ])->assertSessionHasErrors('expected_status');
+    expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::EVALUATION);
 });

@@ -15,6 +15,9 @@ class TransitionCompetitionStatusRequest extends FormRequest
 
     public function rules(): array
     {
-        return ['status' => ['required', 'string', Rule::in(CompetitionLifecycleService::states())]];
+        return [
+            'status' => ['required', 'string', Rule::in(CompetitionLifecycleService::states())],
+            'expected_status' => ['required', 'string', 'max:255'],
+        ];
     }
 }

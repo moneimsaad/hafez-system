@@ -20,40 +20,8 @@ class ResultCalculationService
         $branch = $competition->competitionBranches()->whereKey($branchId)->firstOrFail();
         $mode = data_get($competition->rules, 'multiple_judges', 'average');
         $mode = $mode === 'sum' ? 'sum' : 'average';
-        $evaluations = Evaluation::query()->where('competition_id', $competition->id)
-            ->where('branch_id', $branch->id)
-            ->where('status', 'submitted')
-            ->whereHas('registration', fn ($registration) => $registration
-                ->whereColumn('registrations.competition_id', 'evaluations.competition_id')
-                ->whereColumn('registrations.branch_id', 'evaluations.branch_id')
-                ->whereColumn('registrations.student_id', 'evaluations.student_id')
-                ->where('registrations.status', 'approved'))
-            ->get()->groupBy('registration_id');
-        $assignments = CommitteeStudent::query()
-            ->whereHas('committee', fn ($query) => $query->where('competition_id', $competition->id)->where('branch_id', $branch->id))
-            ->whereHas('registration', fn ($registration) => $registration
-                ->where('competition_id', $competition->id)
-                ->where('branch_id', $branch->id)
-                ->where('status', 'approved'))
-            ->with('committee.committeeJudges:id,committee_id,judge_id')
-            ->get()
-            ->groupBy('registration_id');
-
-        // Final results may only be created once every platform judge assigned
-        // to that registration has submitted a valid evaluation. Existing
-        // results are intentionally exempt so regeneration never alters them.
-        foreach ($assignments as $registrationId => $studentAssignments) {
-            if (Result::query()->where('registration_id', $registrationId)->exists()) {
-                continue;
-            }
-            $requiredJudges = $studentAssignments->flatMap(fn ($assignment) => $assignment->committee->committeeJudges->pluck('judge_id'))->unique()->values();
-            $submittedJudges = collect($evaluations->get($registrationId, collect()))
-                ->filter(fn (Evaluation $evaluation) => $requiredJudges->contains($evaluation->judge_id))
-                ->pluck('judge_id')->unique();
-            if ($requiredJudges->isEmpty() || $submittedJudges->count() !== $requiredJudges->count()) {
-                throw ValidationException::withMessages(['branch_id' => 'لم تكتمل تقييمات جميع الحكام لهذا الطالب بعد.']);
-            }
-        }
+        $evaluations = $this->submittedEvaluations($competition, $branch->id);
+        $this->assertRequiredEvaluationsComplete($competition, $branch->id, $evaluations);
         $results = collect();
         $lockedIds = [];
 
@@ -103,5 +71,58 @@ class ResultCalculationService
         }
 
         return $ordered;
+    }
+
+    /**
+     * Checks the same account-linked judge completion requirement used by
+     * result generation without creating or changing result records.
+     */
+    public function assertEvaluationsComplete(Competition $competition, int $branchId): void
+    {
+        $branch = $competition->competitionBranches()->whereKey($branchId)->firstOrFail();
+
+        $this->assertRequiredEvaluationsComplete($competition, $branch->id, $this->submittedEvaluations($competition, $branch->id));
+    }
+
+    private function submittedEvaluations(Competition $competition, int $branchId): Collection
+    {
+        return Evaluation::query()->where('competition_id', $competition->id)
+            ->where('branch_id', $branchId)
+            ->where('status', 'submitted')
+            ->whereHas('registration', fn ($registration) => $registration
+                ->whereColumn('registrations.competition_id', 'evaluations.competition_id')
+                ->whereColumn('registrations.branch_id', 'evaluations.branch_id')
+                ->whereColumn('registrations.student_id', 'evaluations.student_id')
+                ->where('registrations.status', 'approved'))
+            ->get()->groupBy('registration_id');
+    }
+
+    private function assertRequiredEvaluationsComplete(Competition $competition, int $branchId, Collection $evaluations): void
+    {
+        $assignments = CommitteeStudent::query()
+            ->whereHas('committee', fn ($query) => $query->where('competition_id', $competition->id)->where('branch_id', $branchId))
+            ->whereHas('registration', fn ($registration) => $registration
+                ->where('competition_id', $competition->id)
+                ->where('branch_id', $branchId)
+                ->where('status', 'approved'))
+            ->with('committee.committeeJudges:id,committee_id,judge_id')
+            ->get()
+            ->groupBy('registration_id');
+
+        // Final results may only be created once every platform judge assigned
+        // to that registration has submitted a valid evaluation. Existing
+        // results are intentionally exempt so regeneration never alters them.
+        foreach ($assignments as $registrationId => $studentAssignments) {
+            if (Result::query()->where('registration_id', $registrationId)->exists()) {
+                continue;
+            }
+            $requiredJudges = $studentAssignments->flatMap(fn ($assignment) => $assignment->committee->committeeJudges->pluck('judge_id'))->unique()->values();
+            $submittedJudges = collect($evaluations->get($registrationId, collect()))
+                ->filter(fn (Evaluation $evaluation) => $requiredJudges->contains($evaluation->judge_id))
+                ->pluck('judge_id')->unique();
+            if ($requiredJudges->isEmpty() || $submittedJudges->count() !== $requiredJudges->count()) {
+                throw ValidationException::withMessages(['branch_id' => 'لم تكتمل تقييمات جميع الحكام لهذا الطالب بعد.']);
+            }
+        }
     }
 }

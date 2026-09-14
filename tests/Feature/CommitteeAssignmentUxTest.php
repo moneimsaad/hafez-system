@@ -6,7 +6,9 @@ use App\Models\CommitteeManualJudge;
 use App\Models\CommitteeStudent;
 use App\Models\Competition;
 use App\Models\CompetitionBranch;
+use App\Models\Evaluation;
 use App\Models\Registration;
+use App\Models\Result;
 use App\Models\Student;
 use App\Models\User;
 
@@ -83,6 +85,63 @@ it('adds normalizes and removes manual judges without creating user accounts', f
     expect(User::count())->toBe($usersBefore);
     $this->actingAs($owner)->delete(route('committees.manual-judges.destroy', [$committee, $manualJudge]))->assertRedirect();
     expect(CommitteeManualJudge::query()->whereKey($manualJudge->id)->exists())->toBeFalse();
+});
+
+it('separates account-linked and manual judge counts in the committees list', function () {
+    [$owner, , , , $committee] = committeeUxFixture();
+    $linkedJudge = User::factory()->create();
+    CommitteeJudge::create(['committee_id' => $committee->id, 'judge_id' => $linkedJudge->id]);
+    CommitteeManualJudge::insert([
+        ['committee_id' => $committee->id, 'name' => 'الشيخ أحمد'],
+        ['committee_id' => $committee->id, 'name' => 'الشيخ محمود'],
+    ]);
+
+    $this->actingAs($owner)->get(route('committees.index'))
+        ->assertOk()
+        ->assertSee('حكام الحسابات')
+        ->assertSee('الحكام بالاسم')
+        ->assertSee('حسابات:')
+        ->assertSee('بالاسم:')
+        ->assertViewHas('committees', function ($committees) use ($committee) {
+            $listed = $committees->firstWhere('id', $committee->id);
+
+            return $listed !== null
+                && $listed->users_count === 1
+                && $listed->manual_judges_count === 2;
+        })
+        ->assertViewHas('summary', fn ($summary) => $summary['linked_judges'] === 1
+            && $summary['manual_judges'] === 2
+            && $summary['judges'] === 3);
+});
+
+it('does not treat manual judges as evaluation or result-completion judges', function () {
+    [$owner, $competition, $branch, , $committee] = committeeUxFixture();
+    $linkedJudge = User::factory()->create();
+    $sameNameUser = User::factory()->create(['name' => 'الشيخ عبد الرحمن']);
+    $registration = committeeUxRegistration($competition, $branch);
+    CommitteeJudge::create(['committee_id' => $committee->id, 'judge_id' => $linkedJudge->id]);
+    CommitteeManualJudge::create(['committee_id' => $committee->id, 'name' => 'الشيخ عبد الرحمن']);
+    CommitteeStudent::create(['committee_id' => $committee->id, 'student_id' => $registration->student_id, 'registration_id' => $registration->id]);
+    Evaluation::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id,
+        'student_id' => $registration->student_id, 'registration_id' => $registration->id,
+        'judge_id' => $linkedJudge->id, 'memorization_score' => 30, 'tajweed_score' => 25,
+        'performance_score' => 20, 'discipline_score' => 15, 'total_score' => 90,
+        'percentage' => 90, 'status' => 'submitted',
+    ]);
+
+    $this->actingAs($sameNameUser)
+        ->get(route('committees.evaluations.bulk', $committee))
+        ->assertForbidden();
+
+    $this->actingAs($owner)->post(route('results.generate'), [
+        'competition_id' => $competition->id,
+        'branch_id' => $branch->id,
+    ])->assertRedirect();
+
+    expect(Result::query()->where('registration_id', $registration->id)->exists())->toBeTrue()
+        ->and(CommitteeJudge::query()->where('committee_id', $committee->id)->count())->toBe(1)
+        ->and(CommitteeManualJudge::query()->where('committee_id', $committee->id)->count())->toBe(1);
 });
 
 it('prevents another organizer from changing manual judges', function () {

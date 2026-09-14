@@ -17,6 +17,8 @@
             $hasBranches = $competition->competitionBranches()->exists();
             $registrationReady = app(\App\Services\CompetitionStatusService::class)->isRegistrationOpen($competition);
             $availableTransitions = $availableTransitions ?? [];
+            $currentLifecycleState = $currentLifecycleState ?? app(\App\Services\CompetitionLifecycleService::class)->state($competition);
+            $currentLifecycleLabel = $currentLifecycleLabel ?? app(\App\Services\CompetitionLifecycleService::class)->label($currentLifecycleState);
             $publicUrl = $competition->creator?->username && $competition->competition_number
                 ? route('competitions.public-register-canonical', [$competition->creator->username, $competition->competition_number])
                 : null;
@@ -48,14 +50,43 @@
                         <p class="text-muted mb-0">الحالة الحالية: {{ $competition->display_status }}</p>
                     </div>
                     @foreach($availableTransitions as $transition)
-                        <form method="POST" action="{{ route('competitions.status.update', $competition) }}" class="d-inline">
-                            @csrf
-                            <input type="hidden" name="status" value="{{ $transition['state'] }}">
-                            <button type="submit" class="btn btn-success">الانتقال إلى {{ $transition['label'] }}</button>
-                        </form>
+                        @php($isEvaluationRollback = $currentLifecycleState === \App\Services\CompetitionLifecycleService::EVALUATION && $transition['state'] === \App\Services\CompetitionLifecycleService::REGISTRATION_CLOSED)
+                        @if($isEvaluationRollback)
+                            <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#evaluation-rollback-modal">العودة إلى {{ $transition['label'] }}</button>
+                        @else
+                            <form method="POST" action="{{ route('competitions.status.update', $competition) }}" class="d-inline">
+                                @csrf
+                                <input type="hidden" name="status" value="{{ $transition['state'] }}">
+                                <input type="hidden" name="expected_status" value="{{ $competition->status }}">
+                                <button type="submit" class="btn btn-success">الانتقال إلى {{ $transition['label'] }}</button>
+                            </form>
+                        @endif
                     @endforeach
                 </div>
             </div>
+            @if(collect($availableTransitions)->contains('state', \App\Services\CompetitionLifecycleService::REGISTRATION_CLOSED) && $currentLifecycleState === \App\Services\CompetitionLifecycleService::EVALUATION)
+                <div class="modal fade" id="evaluation-rollback-modal" tabindex="-1" aria-labelledby="evaluation-rollback-title" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <form method="POST" action="{{ route('competitions.status.update', $competition) }}" class="modal-content">
+                            @csrf
+                            <input type="hidden" name="status" value="{{ \App\Services\CompetitionLifecycleService::REGISTRATION_CLOSED }}">
+                            <input type="hidden" name="expected_status" value="{{ $competition->status }}">
+                            <div class="modal-header">
+                                <h2 class="modal-title fs-5" id="evaluation-rollback-title">تأكيد العودة إلى مرحلة سابقة</h2>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="mb-2">الحالة الحالية: <strong>{{ $currentLifecycleLabel }}</strong></p>
+                                <p class="mb-0">الحالة المستهدفة: <strong>التسجيل مغلق</strong></p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                                <button type="submit" class="btn btn-warning">تأكيد العودة إلى التسجيل مغلق</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            @endif
         @endif
         <div class="card hafez-card border-0 mb-4">
             <div class="card-body p-4">

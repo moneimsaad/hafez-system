@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Competition;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class CompetitionLifecycleService
@@ -146,8 +147,11 @@ class CompetitionLifecycleService
     public function assertAllowsEvaluation(Competition $competition): void
     {
         if (! $this->allowsEvaluation($competition)) {
+            $currentState = $this->label($this->state($competition));
+            $requiredState = $this->label(self::EVALUATION);
+
             throw ValidationException::withMessages([
-                'competition_id' => 'لا يمكن إدخال التقييمات في حالة المسابقة الحالية.',
+                'competition_id' => "لا يمكن إدخال التقييمات لأن حالة المسابقة الحالية هي «{$currentState}». يتطلب إدخال التقييمات أن تكون الحالة «{$requiredState}».",
             ]);
         }
     }
@@ -184,36 +188,66 @@ class CompetitionLifecycleService
             default => null,
         };
 
-        if ($next === null || ($state === self::DRAFT && ! $this->isReady($competition))) {
-            return [];
+        $transitions = [];
+        if ($next !== null && ! ($state === self::DRAFT && ! $this->isReady($competition))) {
+            $transitions[] = ['state' => $next, 'label' => $this->label($next)];
         }
 
-        return [['state' => $next, 'label' => $this->label($next)]];
+        if ($state === self::EVALUATION && $this->canRollbackEvaluation($competition)) {
+            $transitions[] = ['state' => self::REGISTRATION_CLOSED, 'label' => $this->label(self::REGISTRATION_CLOSED)];
+        }
+
+        return $transitions;
     }
 
-    public function transition(Competition $competition, string $target): Competition
+    public function canRollbackEvaluation(Competition $competition): bool
     {
-        if (! in_array($target, self::states(), true)) {
-            throw ValidationException::withMessages(['status' => 'حالة المسابقة غير صحيحة.']);
-        }
+        return ! $competition->results()->exists()
+            && ! $competition->evaluations()->where('status', 'submitted')->exists();
+    }
 
-        $current = $this->state($competition);
-        $allowed = collect($this->availableTransitions($competition))->pluck('state')->all();
-        if (! in_array($target, $allowed, true)) {
-            throw ValidationException::withMessages(['status' => 'لا يمكن الانتقال إلى هذه الحالة من الحالة الحالية.']);
-        }
+    public function transition(Competition $competition, string $target, string $expectedStatus): Competition
+    {
+        return DB::transaction(function () use ($competition, $target, $expectedStatus): Competition {
+            $competition = Competition::query()->lockForUpdate()->findOrFail($competition->getKey());
 
-        if ($target === self::PUBLISHED && ! $this->isReady($competition)) {
-            throw ValidationException::withMessages(['status' => 'يجب إكمال إعداد المسابقة والمستويات قبل نشرها.']);
-        }
+            if ($competition->status !== $expectedStatus) {
+                throw ValidationException::withMessages([
+                    'expected_status' => 'تم تغيير حالة المسابقة بواسطة عملية أخرى. يرجى تحديث الصفحة قبل المحاولة مرة أخرى.',
+                ]);
+            }
 
-        if ($target === self::RESULTS_PUBLISHED && ! $competition->results()->exists()) {
-            throw ValidationException::withMessages(['status' => 'يجب توليد نتيجة واحدة على الأقل قبل نشر النتائج.']);
-        }
+            if (! in_array($target, self::states(), true)) {
+                throw ValidationException::withMessages(['status' => 'حالة المسابقة غير صحيحة.']);
+            }
 
-        $competition->update(['status' => $target]);
+            $current = $this->state($competition);
+            $allowed = collect($this->availableTransitions($competition))->pluck('state')->all();
+            if ($current === self::EVALUATION && $target === self::REGISTRATION_CLOSED) {
+                $allowed[] = self::REGISTRATION_CLOSED;
+            }
+            if (! in_array($target, $allowed, true)) {
+                throw ValidationException::withMessages(['status' => 'لا يمكن الانتقال إلى هذه الحالة من الحالة الحالية.']);
+            }
 
-        return $competition->refresh();
+            if ($target === self::PUBLISHED && ! $this->isReady($competition)) {
+                throw ValidationException::withMessages(['status' => 'يجب إكمال إعداد المسابقة والمستويات قبل نشرها.']);
+            }
+
+            if ($target === self::RESULTS_PUBLISHED && ! $competition->results()->exists()) {
+                throw ValidationException::withMessages(['status' => 'يجب توليد نتيجة واحدة على الأقل قبل نشر النتائج.']);
+            }
+
+            if ($current === self::EVALUATION && $target === self::REGISTRATION_CLOSED && ! $this->canRollbackEvaluation($competition)) {
+                throw ValidationException::withMessages([
+                    'status' => 'لا يمكن العودة إلى حالة التسجيل مغلق بعد وجود تقييمات مرسلة أو نتائج مولدة.',
+                ]);
+            }
+
+            $competition->update(['status' => $target]);
+
+            return $competition->refresh();
+        });
     }
 
     public function label(string $state): string

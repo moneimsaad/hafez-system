@@ -17,6 +17,7 @@ use App\Services\EvaluationScoreService;
 use App\Services\AuditLogService;
 use App\Services\CompetitionScoringRulesService;
 use App\Services\CompetitionLifecycleService;
+use App\Services\ResultCalculationService;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -24,7 +25,7 @@ use Illuminate\Validation\ValidationException;
 
 class EvaluationController extends Controller
 {
-    public function index()
+    public function index(CompetitionLifecycleService $lifecycle, ResultCalculationService $results)
     {
         Gate::authorize('viewAny', Evaluation::class);
         $authorizedQuery = Evaluation::query();
@@ -84,6 +85,38 @@ class EvaluationController extends Controller
             'completed' => (clone $authorizedQuery)->where('status', 'submitted')->count(),
             'average_percentage' => round((float) ((clone $authorizedQuery)->whereNotNull('percentage')->avg('percentage') ?? 0), 2),
         ];
+        $nextStageAvailable = false;
+        if (request()->filled('competition_id') && request()->filled('branch_id')) {
+            $competition = Competition::query()->find(request()->integer('competition_id'));
+            $branch = $competition?->competitionBranches()->whereKey(request()->integer('branch_id'))->first();
+
+            if ($branch !== null
+                && $lifecycle->state($competition) === CompetitionLifecycleService::EVALUATION
+                && Gate::allows('generate', $competition)) {
+                try {
+                    $results->assertEvaluationsComplete($competition, $branch->id);
+                    $nextStageAvailable = true;
+                } catch (ValidationException) {
+                    // Keep the navigation unavailable until the existing result
+                    // completion rules are satisfied.
+                }
+            }
+        }
+        $editableCommitteeIds = $evaluations->getCollection()
+            ->filter(fn (Evaluation $evaluation) => (int) $evaluation->judge_id === (int) auth()->id()
+                && $lifecycle->state($evaluation->competition) === CompetitionLifecycleService::EVALUATION)
+            ->mapWithKeys(function (Evaluation $evaluation): array {
+                $committeeIds = $evaluation->registration?->committeeStudents
+                    ?->where('student_id', $evaluation->student_id)
+                    ->pluck('committee_id')
+                    ->unique()
+                    ->values() ?? collect();
+
+                return $committeeIds->count() === 1
+                    ? [$evaluation->id => $committeeIds->first()]
+                    : [];
+            })
+            ->all();
 
         return view('evaluation.index', [
             'evaluations' => $evaluations,
@@ -93,6 +126,8 @@ class EvaluationController extends Controller
             'statuses' => (clone $authorizedQuery)->select('status')->whereNotNull('status')->distinct()->orderBy('status')->pluck('status'),
             'committees' => $committees,
             'summary' => $summary,
+            'nextStageAvailable' => $nextStageAvailable,
+            'editableCommitteeIds' => $editableCommitteeIds,
         ]);
     }
 
@@ -204,8 +239,13 @@ class EvaluationController extends Controller
                 $saved++;
             }
         });
-        $page = $request->boolean('save_and_next') ? $request->integer('page', 1) + 1 : $request->integer('page', 1);
         $audit->record($request->user()->id, 'bulk_submitted', $committee, null, null, ['count' => $saved]);
+
+        if ($request->boolean('save_and_next')) {
+            return redirect()->route('evaluations.index')->with('status', "تم حفظ {$saved} تقييماً بنجاح.");
+        }
+
+        $page = $request->integer('page', 1);
         return redirect()->route('committees.evaluations.bulk', [$committee, 'page' => $page])->with('status', "تم حفظ {$saved} تقييماً بنجاح.");
     }
 

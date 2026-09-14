@@ -65,6 +65,8 @@ class CompetitionController extends Controller
         return view('competition.show', [
             'competition' => $competition,
             'availableTransitions' => $lifecycle->availableTransitions($competition),
+            'currentLifecycleState' => $lifecycle->state($competition),
+            'currentLifecycleLabel' => $lifecycle->label($lifecycle->state($competition)),
         ]);
     }
 
@@ -72,7 +74,11 @@ class CompetitionController extends Controller
     {
         Gate::authorize('update', $competition);
         $old = $competition->getAttributes();
-        $lifecycle->transition($competition, $request->validated('status'));
+        $competition = $lifecycle->transition(
+            $competition,
+            $request->validated('status'),
+            $request->validated('expected_status'),
+        );
         $audit->record($request->user()->id, 'status_changed', $competition, null, $old, $competition->getAttributes());
 
         return back()->with('status', 'تم تحديث حالة المسابقة بنجاح.');

@@ -41,11 +41,49 @@ function bulkEvaluationFixture(int $students = 55): array
 
 test('bulk evaluation entry is available to owner and assigned judge but not unrelated users', function () {
     $fixture = bulkEvaluationFixture(1);
+    $fixture['competition']->update(['status' => 'Evaluation']);
     $admin = User::factory()->create(['role' => 'Platform Admin']);
     $this->actingAs($admin)->get(route('committees.evaluations.bulk', $fixture['committee']))->assertOk();
     $this->actingAs($fixture['owner'])->get(route('committees.evaluations.bulk', $fixture['committee']))->assertOk();
     $this->actingAs($fixture['judge'])->get(route('committees.evaluations.bulk', $fixture['committee']))->assertOk();
     $this->actingAs($fixture['other'])->get(route('committees.evaluations.bulk', $fixture['committee']))->assertForbidden();
+});
+
+test('bulk evaluation entry explains the required lifecycle state on committee details', function () {
+    $fixture = bulkEvaluationFixture(1);
+    $states = [
+        'Registration Open' => 'التسجيل مفتوح',
+        'Registration Closed' => 'التسجيل مغلق',
+        'Results Published' => 'النتائج منشورة',
+        'Completed' => 'مكتملة',
+    ];
+
+    foreach ($states as $status => $label) {
+        $fixture['competition']->update(['status' => $status]);
+        $committeeUrl = route('committees.show', $fixture['committee']);
+        $response = $this->actingAs($fixture['owner'])
+            ->from($committeeUrl)
+            ->get(route('committees.evaluations.bulk', $fixture['committee']));
+
+        $response->assertRedirect($committeeUrl)
+            ->assertSessionHasErrors([
+                'competition_id' => "لا يمكن إدخال التقييمات لأن حالة المسابقة الحالية هي «{$label}». يتطلب إدخال التقييمات أن تكون الحالة «التقييم جارٍ».",
+            ]);
+
+        $this->get($committeeUrl)
+            ->assertOk()
+            ->assertSee("حالة المسابقة الحالية هي «{$label}»")
+            ->assertSee('يتطلب إدخال التقييمات أن تكون الحالة «التقييم جارٍ».');
+    }
+});
+
+test('unauthorized users remain forbidden before lifecycle validation', function () {
+    $fixture = bulkEvaluationFixture(1);
+    $fixture['competition']->update(['status' => 'Results Published']);
+
+    $this->actingAs($fixture['other'])
+        ->get(route('committees.evaluations.bulk', $fixture['committee']))
+        ->assertForbidden();
 });
 
 test('bulk evaluation entry paginates fifty rows and preserves filters', function () {
@@ -69,6 +107,29 @@ test('bulk evaluation saves complete rows and updates the same evaluator without
     expect(Evaluation::where('judge_id', $fixture['judge']->id)->count())->toBe(2);
     $this->actingAs($fixture['judge'])->post(route('committees.evaluations.bulk.store', $fixture['committee']), $payload['rows'] ? $payload : [])->assertRedirect();
     expect(Evaluation::where('judge_id', $fixture['judge']->id)->count())->toBe(2);
+});
+
+test('bulk evaluation saves stay on the current page while save and continue opens evaluations', function () {
+    $fixture = bulkEvaluationFixture(1);
+    $registration = Registration::query()->where('competition_id', $fixture['competition']->id)->firstOrFail();
+    $rows = [
+        $registration->id => [
+            'registration_id' => $registration->id,
+            'scores' => [['score' => 40], ['score' => 20], ['score' => 20]],
+        ],
+    ];
+
+    $this->actingAs($fixture['judge'])->post(route('committees.evaluations.bulk.store', $fixture['committee']), [
+        'rows' => $rows,
+        'page' => 2,
+        'save_and_next' => '0',
+    ])->assertRedirect(route('committees.evaluations.bulk', [$fixture['committee'], 'page' => 2]));
+
+    $this->actingAs($fixture['judge'])->post(route('committees.evaluations.bulk.store', $fixture['committee']), [
+        'rows' => $rows,
+        'page' => 2,
+        'save_and_next' => '1',
+    ])->assertRedirect(route('evaluations.index'));
 });
 
 test('bulk evaluation maps reordered registration ids to the exact students and updates only the selected row', function () {
@@ -102,12 +163,13 @@ test('bulk evaluation maps reordered registration ids to the exact students and 
 test('bulk evaluation rejects partially completed rows atomically', function () {
     $fixture = bulkEvaluationFixture(2);
     $registrations = Registration::query()->pluck('id');
-    $response = $this->actingAs($fixture['judge'])->from(route('committees.evaluations.bulk', $fixture['committee']))
+    $bulkUrl = route('committees.evaluations.bulk', [$fixture['committee'], 'page' => 1]);
+    $response = $this->actingAs($fixture['judge'])->from($bulkUrl)
         ->post(route('committees.evaluations.bulk.store', $fixture['committee']), ['rows' => [
             ['registration_id' => $registrations[0], 'scores' => [['score' => 40], ['score' => 20], ['score' => 20]]],
             ['registration_id' => $registrations[1], 'scores' => [['score' => 40], ['score' => 20], ['score' => '']]],
-        ]]);
-    $response->assertRedirect()->assertSessionHasErrors();
+        ], 'page' => 1, 'save_and_next' => '1']);
+    $response->assertRedirect($bulkUrl)->assertSessionHasErrors();
     expect(Evaluation::count())->toBe(0);
 });
 

@@ -29,7 +29,7 @@ class CommitteeController extends Controller
 
         $query = (clone $authorizedQuery)
             ->with(['competition', 'competitionBranch'])
-            ->withCount(['users', 'students'])
+            ->withCount(['users', 'manualJudges', 'students'])
             ->latest();
         if ($search = request('search')) {
             $query->where(function ($scope) use ($search) {
@@ -45,13 +45,18 @@ class CommitteeController extends Controller
         $competitionIds = (clone $authorizedQuery)->select('competition_id')->distinct();
         $branchIds = (clone $authorizedQuery)->select('branch_id')->distinct();
         $authorizedCommitteeIds = (clone $authorizedQuery)->select('id');
+        $linkedJudgeCount = CommitteeJudge::query()->whereIn('committee_id', $authorizedCommitteeIds)->count();
+        $manualJudgeCount = CommitteeManualJudge::query()->whereIn('committee_id', $authorizedCommitteeIds)->count();
+
         return view('committee.index', [
             'committees' => $query->paginate(15)->withQueryString(),
             'competitions' => Competition::query()->whereIn('id', $competitionIds)->orderBy('title')->get(),
             'branches' => CompetitionBranch::query()->with('competition')->whereIn('id', $branchIds)->orderBy('name')->get(),
             'summary' => [
                 'committees' => (clone $authorizedQuery)->count(),
-                'judges' => CommitteeJudge::query()->whereIn('committee_id', $authorizedCommitteeIds)->count(),
+                'linked_judges' => $linkedJudgeCount,
+                'manual_judges' => $manualJudgeCount,
+                'judges' => $linkedJudgeCount + $manualJudgeCount,
                 'students' => CommitteeStudent::query()->whereIn('committee_id', $authorizedCommitteeIds)->count(),
             ],
         ]);

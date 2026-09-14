@@ -76,6 +76,7 @@
             @foreach($evaluations as $evaluation)
                 @php($committee = $evaluation->registration?->committeeStudents?->firstWhere('student_id', $evaluation->student_id)?->committee)
                 @php($statusLabel = ['pending' => 'بانتظار التقييم', 'submitted' => 'تم التقييم'][$evaluation->status] ?? $evaluation->status)
+                @php($editableCommitteeId = $editableCommitteeIds[$evaluation->id] ?? null)
                 <article class="evaluation-mobile-card">
                     <div class="evaluation-mobile-card__header">
                         <a class="evaluation-mobile-card__student" href="{{ route('evaluations.show',$evaluation) }}">{{ $evaluation->student?->full_name }}</a>
@@ -88,12 +89,19 @@
                         <div><dt>الحكم</dt><dd>{{ $evaluation->judge?->name }}</dd></div>
                         <div><dt>المجموع</dt><dd>{{ $evaluation->total_score }} <span class="text-muted">({{ $evaluation->percentage }}%)</span></dd></div>
                     </dl>
-                    <a href="{{ route('evaluations.show',$evaluation) }}" class="btn btn-outline-success w-100">عرض التقييم</a>
+                    <div class="d-flex gap-2">
+                        <a href="{{ route('evaluations.show',$evaluation) }}" class="btn btn-outline-secondary flex-fill">عرض التفاصيل</a>
+                        @if($editableCommitteeId)
+                            <a href="{{ route('committees.evaluations.bulk', $editableCommitteeId) }}" class="btn btn-success flex-fill">تعديل</a>
+                        @endif
+                    </div>
                 </article>
             @endforeach
         </div>
         <div class="d-none d-lg-block"><x-ui.data-table :headers="['الطالب','المسابقة','المستوى','اللجنة','الحكم','الحالة','المجموع','الإجراءات']">
-            @foreach($evaluations as $evaluation)<tr>
+            @foreach($evaluations as $evaluation)
+                @php($editableCommitteeId = $editableCommitteeIds[$evaluation->id] ?? null)
+                <tr class="evaluation-row" data-evaluation-row data-evaluation-url="{{ route('evaluations.show', $evaluation) }}" tabindex="0" role="link" aria-label="عرض تفاصيل تقييم {{ $evaluation->student?->full_name }}">
                 <td class="fw-semibold">{{ $evaluation->student?->full_name }}</td>
                 <td>{{ $evaluation->competition?->title }}</td>
                 <td>{{ $evaluation->competitionBranch?->name }}</td>
@@ -107,11 +115,21 @@
                 <td>{{ $evaluation->total_score }} <small class="text-muted">({{ $evaluation->percentage }}%)</small>
                 </td>
                 <td>
-                    <a href="{{ route('evaluations.show',$evaluation) }}" class="btn btn-sm btn-outline-success">عرض</a>
+                    <div class="d-flex flex-wrap gap-1">
+                        <a href="{{ route('evaluations.show',$evaluation) }}" class="btn btn-sm btn-outline-secondary">عرض التفاصيل</a>
+                        @if($editableCommitteeId)
+                            <a href="{{ route('committees.evaluations.bulk', $editableCommitteeId) }}" class="btn btn-sm btn-success" data-evaluation-edit>تعديل</a>
+                        @endif
+                    </div>
                 </td>
             </tr>
             @endforeach</x-ui.data-table></div>
         <x-ui.pagination :paginator="$evaluations" />
+        @if($nextStageAvailable)
+            <div class="d-flex justify-content-end mt-3">
+                <a href="{{ route('results.index') }}" class="btn btn-success btn-lg">الانتقال للمرحلة التالية</a>
+            </div>
+        @endif
         @else
             @if(auth()->user()->role === 'User' && ($summary['total'] ?? 0) === 0)
                 <x-ui.empty-state message="لا توجد تقييمات مسندة إليك حالياً" :action="route('evaluations.create')" action-label="مراجعة التكليفات" />
@@ -122,4 +140,19 @@
             @endif
         @endif
     </div>
+    <script>
+        document.querySelectorAll('[data-evaluation-row]').forEach((row) => {
+            const navigate = () => window.location.assign(row.dataset.evaluationUrl);
+            row.addEventListener('click', (event) => {
+                if (event.target.closest('a, button, input, select, textarea, label, form')) return;
+                navigate();
+            });
+            row.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                navigate();
+            });
+        });
+    </script>
+    <style>.evaluation-row{cursor:pointer}.evaluation-row:hover>td{background-color:rgba(25,135,84,.06)}</style>
 </x-app-layout>

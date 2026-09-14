@@ -12,8 +12,8 @@
         <div class="hafez-dashboard-intro mb-4">نسّق مواعيد اللجان ووزّع الحكام والطلاب على مستويات المسابقة المناسبة.</div>
         <x-ui.alert />
         <div class="row g-3 mb-4">
-            @foreach([['label'=>'إجمالي اللجان','key'=>'committees'],['label'=>'المحكمون المعيّنون','key'=>'judges'],['label'=>'الطلاب الموزّعون','key'=>'students']] as $card)
-                <div class="col-12 col-md-4"><div class="card hafez-stat-card border-0 h-100"><div class="card-body"><p class="small text-muted mb-2">{{ $card['label'] }}</p><p class="h3 mb-0">{{ $summary[$card['key']] }}</p></div></div></div>
+            @foreach([['label'=>'إجمالي اللجان','key'=>'committees'],['label'=>'حكام الحسابات','key'=>'linked_judges'],['label'=>'الحكام بالاسم','key'=>'manual_judges'],['label'=>'إجمالي الحكام','key'=>'judges'],['label'=>'الطلاب الموزّعون','key'=>'students']] as $card)
+                <div class="col-12 col-md-4 col-xl"><div class="card hafez-stat-card border-0 h-100"><div class="card-body"><p class="small text-muted mb-2">{{ $card['label'] }}</p><p class="h3 mb-0">{{ $summary[$card['key']] }}</p></div></div></div>
             @endforeach
         </div>
         <x-ui.search-filter placeholder="البحث باسم اللجنة أو المسابقة أو المستوى">
@@ -50,7 +50,11 @@
                 <td>{{ $committee->competition?->title }}</td>
                 <td>{{ $committee->competitionBranch?->name }}</td>
                 <td>
-                    <span class="badge text-bg-light border">{{ $committee->users_count }}</span>
+                    <div class="small d-flex flex-column gap-1">
+                        <span>حسابات: <span class="badge text-bg-light border">{{ $committee->users_count }}</span></span>
+                        <span>بالاسم: <span class="badge text-bg-light border">{{ $committee->manual_judges_count }}</span></span>
+                        <span class="fw-semibold">الإجمالي: {{ $committee->users_count + $committee->manual_judges_count }}</span>
+                    </div>
                 </td>
                 <td>
                     <span class="badge text-bg-light border">{{ $committee->students_count }}</span>
@@ -63,7 +67,7 @@
                     </x-ui.action-buttons>
                 </td>
             </tr>
-            @endforeach</x-ui.data-table></div><div class="committee-mobile-list d-md-none">@foreach($committees as $committee)<article class="committee-mobile-card"><h2 class="h6 mb-2">{{ $committee->name }}</h2><dl><div><dt>المسابقة</dt><dd>{{ $committee->competition?->title }}</dd></div><div><dt>المستوى</dt><dd>{{ $committee->competitionBranch?->name }}</dd></div><div><dt>الحكام / الطلاب</dt><dd>{{ $committee->users_count }} / {{ $committee->students_count }}</dd></div><div><dt>تاريخ الإنشاء</dt><dd dir="ltr">{{ $committee->created_at?->format('Y-m-d') }}</dd></div></dl><div class="d-flex gap-2"><a href="{{ route('committees.show',$committee) }}" class="btn btn-sm btn-outline-success flex-fill">عرض</a><a href="{{ route('committees.edit',$committee) }}" class="btn btn-sm btn-outline-secondary flex-fill">تعديل</a></div></article>@endforeach</div>
+            @endforeach</x-ui.data-table></div><div class="committee-mobile-list d-md-none">@foreach($committees as $committee)<article class="committee-mobile-card"><h2 class="h6 mb-2">{{ $committee->name }}</h2><dl><div><dt>المسابقة</dt><dd>{{ $committee->competition?->title }}</dd></div><div><dt>المستوى</dt><dd>{{ $committee->competitionBranch?->name }}</dd></div><div><dt>حكام الحسابات / بالاسم</dt><dd>{{ $committee->users_count }} / {{ $committee->manual_judges_count }}</dd></div><div><dt>إجمالي الحكام / الطلاب</dt><dd>{{ $committee->users_count + $committee->manual_judges_count }} / {{ $committee->students_count }}</dd></div><div><dt>تاريخ الإنشاء</dt><dd dir="ltr">{{ $committee->created_at?->format('Y-m-d') }}</dd></div></dl><div class="d-flex gap-2"><a href="{{ route('committees.show',$committee) }}" class="btn btn-sm btn-outline-success flex-fill">عرض</a><a href="{{ route('committees.edit',$committee) }}" class="btn btn-sm btn-outline-secondary flex-fill">تعديل</a></div></article>@endforeach</div>
         <x-ui.pagination :paginator="$committees" />
         @else
             @if(request()->hasAny(['search', 'competition_id', 'branch_id']))

@@ -15,6 +15,7 @@
 
     <div class="container-fluid py-4 px-3 px-lg-4">
         <x-ui.alert />
+        <x-ui.validation-errors />
         <div class="card hafez-card border-0 mb-4"><div class="card-body p-4">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h2 class="h5 mb-0">معلومات اللجنة</h2><span class="badge text-bg-light border">أنشئت في {{ $committee->created_at?->format('Y-m-d') }}</span></div>
             <div class="row g-3">

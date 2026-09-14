@@ -3,6 +3,7 @@
 use App\Models\Certificate;
 use App\Models\Committee;
 use App\Models\CommitteeJudge;
+use App\Models\CommitteeManualJudge;
 use App\Models\CommitteeStudent;
 use App\Models\Competition;
 use App\Models\CompetitionBranch;
@@ -386,6 +387,66 @@ test('public registration accepts the essential student data without optional de
     expect(Student::where('full_name', 'طالب بدون بيانات إضافية')->value('city'))->toBe('غير محدد');
 });
 
+test('full workflow covers public registration through result certificate and verification', function () {
+    $owner = User::factory()->create(['role' => 'User', 'username' => 'workflow-owner', 'status' => 'active']);
+    $judge = User::factory()->create(['role' => 'User']);
+    $competitionData = ['title' => 'مسابقة التحقق الشامل', 'location' => 'القاهرة', 'registration_start_date' => now()->subDay()->toDateString(), 'registration_end_date' => now()->addDay()->toDateString(), 'exam_start_date' => now()->addDays(2)->toDateString(), 'exam_end_date' => now()->addDays(3)->toDateString(), 'publication_scope' => 'nationwide'];
+
+    $this->actingAs($owner)->post(route('competitions.store'), $competitionData)->assertRedirect();
+    $competition = Competition::query()->where('title', $competitionData['title'])->firstOrFail();
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), ['status' => 'Evaluation', 'expected_status' => 'Draft'])->assertSessionHasErrors('status');
+    $this->actingAs($owner)->post(route('competition-branches.store'), ['competition_id' => $competition->id, 'name' => 'المستوى الكامل', 'memorization_amount' => 'خمسة أجزاء', 'min_age' => 10, 'max_age' => 18, 'total_score' => 100, 'passing_score' => 50])->assertRedirect();
+    $branch = CompetitionBranch::query()->where('competition_id', $competition->id)->firstOrFail();
+
+    foreach ([['Published', 'Draft'], ['Registration Open', 'Published']] as [$target, $expected]) {
+        $this->actingAs($owner)->post(route('competitions.status.update', $competition), ['status' => $target, 'expected_status' => $expected])->assertRedirect();
+        $competition->refresh();
+    }
+    expect($competition->status)->toBe('Registration Open');
+
+    $this->get(route('competitions.public-register-canonical', [$owner->username, $competition->competition_number]))->assertOk();
+    $approvedPayload = ['competition_id' => $competition->id, 'branch_id' => $branch->id, 'full_name' => 'طالب التحقق الكامل', 'birth_date' => now()->subYears(14)->toDateString(), 'gender' => 'Male', 'phone' => '01033333333', 'parent_phone' => '01133333333', 'city' => 'القاهرة'];
+    $this->post(route('registrations.store'), $approvedPayload)->assertRedirect(route('registrations.success'));
+    $approvedRegistration = Registration::query()->where('competition_id', $competition->id)->whereHas('student', fn ($student) => $student->where('phone', $approvedPayload['phone']))->firstOrFail();
+    $rejectedPayload = [...$approvedPayload, 'full_name' => 'طالب مرفوض تاريخي', 'phone' => '01044444444', 'parent_phone' => '01144444444'];
+    $this->post(route('registrations.store'), $rejectedPayload)->assertRedirect(route('registrations.success'));
+    $rejectedRegistration = Registration::query()->where('competition_id', $competition->id)->whereHas('student', fn ($student) => $student->where('phone', $rejectedPayload['phone']))->firstOrFail();
+
+    $this->actingAs($owner)->post(route('registrations.approve', $approvedRegistration))->assertRedirect();
+    $this->actingAs($owner)->post(route('registrations.reject', $rejectedRegistration), ['rejection_reason' => 'طلب اختبار مرفوض'])->assertRedirect();
+    expect($approvedRegistration->fresh()->status)->toBe('approved')->and($rejectedRegistration->fresh()->status)->toBe('rejected');
+
+    $this->actingAs($owner)->post(route('committees.store'), ['competition_id' => $competition->id, 'branch_id' => $branch->id, 'name' => 'لجنة التحقق الشامل', 'exam_date' => now()->addDays(2)->toDateString(), 'location' => 'القاهرة'])->assertRedirect();
+    $committee = Committee::query()->where('competition_id', $competition->id)->firstOrFail();
+    $this->actingAs($owner)->post(route('committees.assign-students', $committee), ['registration_ids' => [$approvedRegistration->id], 'visible_registration_ids' => [$approvedRegistration->id]])->assertRedirect();
+    CommitteeJudge::create(['committee_id' => $committee->id, 'judge_id' => $judge->id]);
+    CommitteeManualJudge::create(['committee_id' => $committee->id, 'name' => 'حكم يدوي تاريخي']);
+    CommitteeStudent::create(['committee_id' => $committee->id, 'student_id' => $rejectedRegistration->student_id, 'registration_id' => $rejectedRegistration->id]);
+    expect($committee->committeeJudges()->count())->toBe(1)->and($committee->manualJudges()->count())->toBe(1);
+
+    foreach ([['Registration Closed', 'Registration Open'], ['Evaluation', 'Registration Closed']] as [$target, $expected]) {
+        $this->actingAs($owner)->post(route('competitions.status.update', $competition), ['status' => $target, 'expected_status' => $expected])->assertRedirect();
+        $competition->refresh();
+    }
+    $this->actingAs($judge)->get(route('committees.evaluations.bulk', $committee))->assertOk();
+    $this->actingAs($judge)->post(route('committees.evaluations.bulk.store', $committee), ['rows' => [['registration_id' => $approvedRegistration->id, 'scores' => [['score' => 45], ['score' => 22], ['score' => 23]]]]])->assertRedirect();
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), ['status' => 'Registration Closed', 'expected_status' => 'Evaluation'])->assertSessionHasErrors('status');
+
+    $this->actingAs($owner)->post(route('results.generate'), ['competition_id' => $competition->id, 'branch_id' => $branch->id])->assertRedirect();
+    $result = Result::query()->where('registration_id', $approvedRegistration->id)->firstOrFail();
+    expect($result->rank)->toBe(1)->and((float) $result->final_score)->toBe(90.0)->and(Result::query()->where('registration_id', $rejectedRegistration->id)->exists())->toBeFalse();
+
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), ['status' => 'Results Published', 'expected_status' => 'Evaluation'])->assertRedirect();
+    $competition->refresh();
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), ['status' => 'Registration Closed', 'expected_status' => 'Results Published'])->assertSessionHasErrors('status');
+    $this->actingAs($owner)->post(route('results.certificate', $result))->assertRedirect();
+    $certificate = Certificate::query()->where('result_id', $result->id)->firstOrFail();
+    $this->get(route('certificates.verify', $certificate->certificate_number))->assertOk()->assertSee('شهادة صحيحة');
+
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), ['status' => 'Completed', 'expected_status' => 'Results Published'])->assertRedirect();
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), ['status' => 'Results Published', 'expected_status' => 'Completed'])->assertSessionHasErrors('status');
+});
+
 test('registration list filters remain owner-scoped and preserve pagination', function () {
     $owner = User::factory()->create();
     $other = User::factory()->create();
@@ -611,7 +672,7 @@ test('committee index preloads judge and student counts without row count querie
         $row = $committees->getCollection()->firstWhere('id', $committee->id);
         return $row !== null && $row->users_count === 1 && $row->students_count === 1;
     })->assertViewHas('summary', fn ($summary) => $summary['committees'] === 1 && $summary['judges'] === 1 && $summary['students'] === 1);
-    expect(collect($queries)->filter(fn ($query) => str_contains(strtolower($query['query']), 'committee_judges') || str_contains(strtolower($query['query']), 'committee_students'))->count())->toBe(3);
+    expect(collect($queries)->filter(fn ($query) => str_contains(strtolower($query['query']), 'committee_judges') || str_contains(strtolower($query['query']), 'committee_manual_judges') || str_contains(strtolower($query['query']), 'committee_students'))->count())->toBe(4);
 });
 
 test('committee index keeps pagination and owner scope while using aggregate counts', function () {
@@ -776,6 +837,96 @@ test('evaluation list filters stay within authorization scope and preserve pagin
         ->assertViewHas('committees', fn ($committees) => $committees->contains('id', $committee->id))
         ->assertViewHas('competitions', fn ($competitions) => $competitions->contains('id', $competition->id) && ! $competitions->contains('id', $foreignCompetition->id))
         ->assertDontSee($foreignStudent->full_name);
+});
+
+test('evaluation list only shows next-stage navigation for an authorized completed evaluation context', function () {
+    $owner = User::factory()->create();
+    $judge = User::factory()->create();
+    $competition = workflowCompetition($owner);
+    $competition->update(['status' => 'Evaluation']);
+    $branch = workflowBranch($competition);
+    $student = workflowStudent();
+    $registration = Registration::create(['competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id, 'status' => 'approved', 'registered_at' => now()]);
+    $committee = Committee::create(['competition_id' => $competition->id, 'name' => 'Navigation Committee', 'branch_id' => $branch->id, 'exam_date' => now(), 'location' => 'Room']);
+    CommitteeJudge::create(['committee_id' => $committee->id, 'judge_id' => $judge->id]);
+    CommitteeStudent::create(['committee_id' => $committee->id, 'student_id' => $student->id, 'registration_id' => $registration->id]);
+    Evaluation::create(['competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id, 'registration_id' => $registration->id, 'judge_id' => $judge->id, 'memorization_score' => 30, 'tajweed_score' => 25, 'performance_score' => 20, 'discipline_score' => 15, 'total_score' => 90, 'percentage' => 90, 'status' => 'submitted']);
+
+    $context = ['competition_id' => $competition->id, 'branch_id' => $branch->id];
+    $this->actingAs($owner)->get(route('evaluations.index', $context))
+        ->assertOk()
+        ->assertSee(route('results.index'), false)
+        ->assertViewHas('nextStageAvailable', true);
+    expect($competition->fresh()->status)->toBe('Evaluation')
+        ->and(Result::query()->where('competition_id', $competition->id)->count())->toBe(0);
+
+    $this->actingAs($owner)->get(route('evaluations.index', ['competition_id' => $competition->id]))
+        ->assertViewHas('nextStageAvailable', false);
+    $this->actingAs($judge)->get(route('evaluations.index', $context))
+        ->assertViewHas('nextStageAvailable', false);
+
+    $secondJudge = User::factory()->create();
+    CommitteeJudge::create(['committee_id' => $committee->id, 'judge_id' => $secondJudge->id]);
+    $this->actingAs($owner)->get(route('evaluations.index', $context))
+        ->assertViewHas('nextStageAvailable', false);
+});
+
+test('evaluation list exposes edit only for the current judges unambiguous assignment and keeps details navigation', function () {
+    $owner = User::factory()->create();
+    $judge = User::factory()->create();
+    $otherJudge = User::factory()->create();
+    $competition = workflowCompetition($owner);
+    $competition->update(['status' => 'Evaluation']);
+    $branch = workflowBranch($competition);
+    $student = workflowStudent();
+    $registration = Registration::create(['competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id, 'status' => 'approved', 'registered_at' => now()]);
+    $committee = Committee::create(['competition_id' => $competition->id, 'name' => 'Edit Committee', 'branch_id' => $branch->id, 'exam_date' => now(), 'location' => 'Room']);
+    CommitteeJudge::insert([
+        ['committee_id' => $committee->id, 'judge_id' => $judge->id],
+        ['committee_id' => $committee->id, 'judge_id' => $otherJudge->id],
+    ]);
+    CommitteeStudent::create(['committee_id' => $committee->id, 'student_id' => $student->id, 'registration_id' => $registration->id]);
+    $ownEvaluation = Evaluation::create(['competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id, 'registration_id' => $registration->id, 'judge_id' => $judge->id, 'memorization_score' => 30, 'tajweed_score' => 25, 'performance_score' => 20, 'discipline_score' => 15, 'total_score' => 90, 'percentage' => 90, 'status' => 'submitted']);
+    $otherEvaluation = Evaluation::create(['competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id, 'registration_id' => $registration->id, 'judge_id' => $otherJudge->id, 'memorization_score' => 29, 'tajweed_score' => 24, 'performance_score' => 19, 'discipline_score' => 14, 'total_score' => 86, 'percentage' => 86, 'status' => 'submitted']);
+
+    $this->actingAs($judge)->get(route('evaluations.index', ['competition_id' => $competition->id, 'branch_id' => $branch->id]))
+        ->assertOk()
+        ->assertSee(route('committees.evaluations.bulk', $committee), false)
+        ->assertSee(route('evaluations.show', $ownEvaluation), false)
+        ->assertSee('data-evaluation-row', false)
+        ->assertSee("event.target.closest('a, button, input, select, textarea, label, form')", false)
+        ->assertViewHas('editableCommitteeIds', fn ($ids) => ($ids[$ownEvaluation->id] ?? null) === $committee->id && ! array_key_exists($otherEvaluation->id, $ids));
+
+    $this->actingAs($owner)->get(route('evaluations.index', ['competition_id' => $competition->id, 'branch_id' => $branch->id]))
+        ->assertDontSee('data-evaluation-edit', false)
+        ->assertSee(route('evaluations.show', $ownEvaluation), false)
+        ->assertSee(route('evaluations.show', $otherEvaluation), false);
+});
+
+test('evaluation list hides edit for ambiguous committee assignments', function () {
+    $owner = User::factory()->create();
+    $judge = User::factory()->create();
+    $competition = workflowCompetition($owner);
+    $competition->update(['status' => 'Evaluation']);
+    $branch = workflowBranch($competition);
+    $student = workflowStudent();
+    $registration = Registration::create(['competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id, 'status' => 'approved', 'registered_at' => now()]);
+    $firstCommittee = Committee::create(['competition_id' => $competition->id, 'name' => 'First Committee', 'branch_id' => $branch->id, 'exam_date' => now(), 'location' => 'Room']);
+    $secondCommittee = Committee::create(['competition_id' => $competition->id, 'name' => 'Second Committee', 'branch_id' => $branch->id, 'exam_date' => now(), 'location' => 'Room']);
+    CommitteeJudge::insert([
+        ['committee_id' => $firstCommittee->id, 'judge_id' => $judge->id],
+        ['committee_id' => $secondCommittee->id, 'judge_id' => $judge->id],
+    ]);
+    CommitteeStudent::insert([
+        ['committee_id' => $firstCommittee->id, 'student_id' => $student->id, 'registration_id' => $registration->id],
+        ['committee_id' => $secondCommittee->id, 'student_id' => $student->id, 'registration_id' => $registration->id],
+    ]);
+    $evaluation = Evaluation::create(['competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id, 'registration_id' => $registration->id, 'judge_id' => $judge->id, 'memorization_score' => 30, 'tajweed_score' => 25, 'performance_score' => 20, 'discipline_score' => 15, 'total_score' => 90, 'percentage' => 90, 'status' => 'submitted']);
+
+    $this->actingAs($judge)->get(route('evaluations.index', ['competition_id' => $competition->id, 'branch_id' => $branch->id]))
+        ->assertDontSee('data-evaluation-edit', false)
+        ->assertSee(route('evaluations.show', $evaluation), false)
+        ->assertViewHas('editableCommitteeIds', fn ($ids) => ! array_key_exists($evaluation->id, $ids));
 });
 
 test('authorized owner can generate results with ranking and cannot expose foreign results', function () {
