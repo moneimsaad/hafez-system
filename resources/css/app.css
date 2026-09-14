@@ -1,0 +1,18 @@
+@import 'bootstrap/dist/css/bootstrap.rtl.min.css';
+
+:root {
+    --hafez-green: #198754;
+    --hafez-gold: #c9a227;
+    --hafez-white: #ffffff;
+    --hafez-light-gray: #f4f5f7;
+}
+
+html,
+body {
+    direction: rtl;
+    text-align: right;
+}
+
+body {
+    background-color: var(--hafez-light-gray);
+}
