@@ -26,10 +26,15 @@ class ResultCalculationService
             ->whereHas('registration', fn ($registration) => $registration
                 ->whereColumn('registrations.competition_id', 'evaluations.competition_id')
                 ->whereColumn('registrations.branch_id', 'evaluations.branch_id')
-                ->whereColumn('registrations.student_id', 'evaluations.student_id'))
+                ->whereColumn('registrations.student_id', 'evaluations.student_id')
+                ->where('registrations.status', 'approved'))
             ->get()->groupBy('registration_id');
         $assignments = CommitteeStudent::query()
             ->whereHas('committee', fn ($query) => $query->where('competition_id', $competition->id)->where('branch_id', $branch->id))
+            ->whereHas('registration', fn ($registration) => $registration
+                ->where('competition_id', $competition->id)
+                ->where('branch_id', $branch->id)
+                ->where('status', 'approved'))
             ->with('committee.committeeJudges:id,committee_id,judge_id')
             ->get()
             ->groupBy('registration_id');

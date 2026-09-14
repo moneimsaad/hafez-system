@@ -813,6 +813,56 @@ test('result generation rejects a registration until every assigned judge submit
     expect(Result::where('registration_id', $registration->id)->exists())->toBeTrue();
 });
 
+test('rejected committee assignments do not block results or receive generated results', function () {
+    $owner = User::factory()->create();
+    $judge = User::factory()->create();
+    $competition = workflowCompetition($owner);
+    $branch = workflowBranch($competition);
+    $approvedStudent = workflowStudent();
+    $rejectedStudent = workflowStudent();
+    $approvedRegistration = Registration::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id,
+        'student_id' => $approvedStudent->id, 'status' => 'approved', 'registered_at' => now(),
+    ]);
+    $rejectedRegistration = Registration::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id,
+        'student_id' => $rejectedStudent->id, 'status' => 'rejected', 'registered_at' => now(),
+    ]);
+    $committee = Committee::create([
+        'competition_id' => $competition->id, 'name' => 'Results Committee',
+        'branch_id' => $branch->id, 'exam_date' => now(), 'location' => 'Room',
+    ]);
+    CommitteeJudge::create(['committee_id' => $committee->id, 'judge_id' => $judge->id]);
+    CommitteeStudent::insert([
+        ['committee_id' => $committee->id, 'student_id' => $approvedStudent->id, 'registration_id' => $approvedRegistration->id],
+        ['committee_id' => $committee->id, 'student_id' => $rejectedStudent->id, 'registration_id' => $rejectedRegistration->id],
+    ]);
+    Evaluation::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id,
+        'student_id' => $approvedStudent->id, 'registration_id' => $approvedRegistration->id,
+        'judge_id' => $judge->id, 'memorization_score' => 30, 'tajweed_score' => 25,
+        'performance_score' => 20, 'discipline_score' => 15, 'total_score' => 90,
+        'percentage' => 90, 'status' => 'submitted',
+    ]);
+    $rejectedEvaluation = Evaluation::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id,
+        'student_id' => $rejectedStudent->id, 'registration_id' => $rejectedRegistration->id,
+        'judge_id' => $judge->id, 'memorization_score' => 10, 'tajweed_score' => 10,
+        'performance_score' => 10, 'discipline_score' => 10, 'total_score' => 40,
+        'percentage' => 40, 'status' => 'submitted',
+    ]);
+
+    $this->actingAs($owner)->post(route('results.generate'), [
+        'competition_id' => $competition->id,
+        'branch_id' => $branch->id,
+    ])->assertRedirect();
+
+    expect(Result::query()->where('registration_id', $approvedRegistration->id)->exists())->toBeTrue()
+        ->and(Result::query()->where('registration_id', $rejectedRegistration->id)->exists())->toBeFalse()
+        ->and(CommitteeStudent::query()->where('registration_id', $rejectedRegistration->id)->exists())->toBeTrue()
+        ->and(Evaluation::query()->whereKey($rejectedEvaluation->id)->exists())->toBeTrue();
+});
+
 test('results list filters are scoped to the owner and preserve query parameters', function () {
     $owner = User::factory()->create();
     $other = User::factory()->create();
