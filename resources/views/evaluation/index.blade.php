@@ -116,7 +116,6 @@
                 </td>
                 <td>
                     <div class="d-flex flex-wrap gap-1">
-                        <a href="{{ route('evaluations.show',$evaluation) }}" class="btn btn-sm btn-outline-secondary">عرض التفاصيل</a>
                         @if($editableCommitteeId)
                             <a href="{{ route('committees.evaluations.bulk', $editableCommitteeId) }}" class="btn btn-sm btn-success" data-evaluation-edit>تعديل</a>
                         @endif
@@ -127,7 +126,7 @@
         <x-ui.pagination :paginator="$evaluations" />
         @if($nextStageAvailable)
             <div class="d-flex justify-content-end mt-3">
-                <a href="{{ route('results.index') }}" class="btn btn-success btn-lg">الانتقال للمرحلة التالية</a>
+                <a href="{{ route('results.index') }}" class="btn btn-success btn-lg">الانتقال إلى المرحلة التالية</a>
             </div>
         @endif
         @else

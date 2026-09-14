@@ -203,6 +203,7 @@ class CompetitionLifecycleService
     public function canRollbackEvaluation(Competition $competition): bool
     {
         return ! $competition->results()->exists()
+            && ! $competition->certificates()->exists()
             && ! $competition->evaluations()->where('status', 'submitted')->exists();
     }
 
@@ -222,10 +223,13 @@ class CompetitionLifecycleService
             }
 
             $current = $this->state($competition);
-            $allowed = collect($this->availableTransitions($competition))->pluck('state')->all();
-            if ($current === self::EVALUATION && $target === self::REGISTRATION_CLOSED) {
-                $allowed[] = self::REGISTRATION_CLOSED;
+            if ($current === self::EVALUATION && $target === self::REGISTRATION_CLOSED && ! $this->canRollbackEvaluation($competition)) {
+                throw ValidationException::withMessages([
+                    'status' => 'لا يمكن العودة إلى حالة التسجيل مغلق بعد وجود تقييمات مرسلة أو نتائج مولدة أو شهادات صادرة.',
+                ]);
             }
+
+            $allowed = collect($this->availableTransitions($competition))->pluck('state')->all();
             if (! in_array($target, $allowed, true)) {
                 throw ValidationException::withMessages(['status' => 'لا يمكن الانتقال إلى هذه الحالة من الحالة الحالية.']);
             }
@@ -236,12 +240,6 @@ class CompetitionLifecycleService
 
             if ($target === self::RESULTS_PUBLISHED && ! $competition->results()->exists()) {
                 throw ValidationException::withMessages(['status' => 'يجب توليد نتيجة واحدة على الأقل قبل نشر النتائج.']);
-            }
-
-            if ($current === self::EVALUATION && $target === self::REGISTRATION_CLOSED && ! $this->canRollbackEvaluation($competition)) {
-                throw ValidationException::withMessages([
-                    'status' => 'لا يمكن العودة إلى حالة التسجيل مغلق بعد وجود تقييمات مرسلة أو نتائج مولدة.',
-                ]);
             }
 
             $competition->update(['status' => $target]);

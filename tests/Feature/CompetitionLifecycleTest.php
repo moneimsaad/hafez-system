@@ -3,6 +3,7 @@
 use App\Models\Competition;
 use App\Models\CompetitionBranch;
 use App\Models\CompetitionLevel;
+use App\Models\Certificate;
 use App\Models\Evaluation;
 use App\Models\Registration;
 use App\Models\Result;
@@ -186,7 +187,8 @@ test('registration closed advances to evaluation and evaluation safely rolls bac
 
     $this->actingAs($owner)->get(route('competitions.show', $competition))
         ->assertOk()
-        ->assertSee('data-bs-target="#evaluation-rollback-modal"', false)
+        ->assertSee('data-evaluation-rollback-trigger', false)
+        ->assertSee('$dispatch(\'open-modal\', \'evaluation-rollback\')', false)
         ->assertSee('الحالة الحالية:')
         ->assertSee('الحالة المستهدفة:');
 
@@ -219,8 +221,14 @@ test('evaluation rollback is blocked after submitted evaluations exist', functio
     $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
         'status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
         'expected_status' => CompetitionLifecycleService::EVALUATION,
-    ])->assertSessionHasErrors('status');
+    ])->assertSessionHasErrors([
+        'status' => 'لا يمكن العودة إلى حالة التسجيل مغلق بعد وجود تقييمات مرسلة أو نتائج مولدة أو شهادات صادرة.',
+    ]);
     expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::EVALUATION);
+
+    $this->actingAs($owner)->get(route('competitions.show', $competition))
+        ->assertOk()
+        ->assertDontSee('data-evaluation-rollback-trigger', false);
 });
 
 test('evaluation rollback is blocked after results exist', function () {
@@ -244,8 +252,50 @@ test('evaluation rollback is blocked after results exist', function () {
     $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
         'status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
         'expected_status' => CompetitionLifecycleService::EVALUATION,
-    ])->assertSessionHasErrors('status');
+    ])->assertSessionHasErrors([
+        'status' => 'لا يمكن العودة إلى حالة التسجيل مغلق بعد وجود تقييمات مرسلة أو نتائج مولدة أو شهادات صادرة.',
+    ]);
     expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::EVALUATION);
+
+    $this->actingAs($owner)->get(route('competitions.show', $competition))
+        ->assertOk()
+        ->assertDontSee('data-evaluation-rollback-trigger', false);
+});
+
+test('evaluation rollback is blocked after certificates exist', function () {
+    $owner = User::factory()->create();
+    $competition = lifecycleTestCompetition($owner, CompetitionLifecycleService::EVALUATION);
+    $branch = $competition->competitionBranches()->firstOrFail();
+    $student = Student::create([
+        'full_name' => 'Certified Result Student', 'birth_date' => '2012-01-01', 'gender' => 'Male',
+        'phone' => '01012345672', 'parent_phone' => '01112345672', 'address' => 'Address', 'city' => 'Cairo', 'center_name' => 'Center',
+    ]);
+    $registration = Registration::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id,
+        'status' => 'approved', 'registered_at' => now(),
+    ]);
+    $result = Result::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id,
+        'registration_id' => $registration->id, 'final_score' => 90, 'percentage' => 90,
+        'rank' => 1, 'result_status' => 'successful',
+    ]);
+    Certificate::create([
+        'competition_id' => $competition->id, 'branch_id' => $branch->id, 'student_id' => $student->id,
+        'result_id' => $result->id, 'certificate_type' => 'شهادة تقدير', 'certificate_number' => 'ROLLBACK-CERT-001',
+        'qr_code' => 'qr', 'file_path' => 'certificates/rollback-test.pdf', 'issued_at' => now(),
+    ]);
+
+    $this->actingAs($owner)->post(route('competitions.status.update', $competition), [
+        'status' => CompetitionLifecycleService::REGISTRATION_CLOSED,
+        'expected_status' => CompetitionLifecycleService::EVALUATION,
+    ])->assertSessionHasErrors([
+        'status' => 'لا يمكن العودة إلى حالة التسجيل مغلق بعد وجود تقييمات مرسلة أو نتائج مولدة أو شهادات صادرة.',
+    ]);
+    expect($competition->fresh()->status)->toBe(CompetitionLifecycleService::EVALUATION);
+
+    $this->actingAs($owner)->get(route('competitions.show', $competition))
+        ->assertOk()
+        ->assertDontSee('data-evaluation-rollback-trigger', false);
 });
 
 test('results published and completed cannot roll back', function () {

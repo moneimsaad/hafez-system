@@ -87,7 +87,7 @@ it('adds normalizes and removes manual judges without creating user accounts', f
     expect(CommitteeManualJudge::query()->whereKey($manualJudge->id)->exists())->toBeFalse();
 });
 
-it('separates account-linked and manual judge counts in the committees list', function () {
+it('shows the combined account-linked and manual judge total in the committees list', function () {
     [$owner, , , , $committee] = committeeUxFixture();
     $linkedJudge = User::factory()->create();
     CommitteeJudge::create(['committee_id' => $committee->id, 'judge_id' => $linkedJudge->id]);
@@ -98,10 +98,9 @@ it('separates account-linked and manual judge counts in the committees list', fu
 
     $this->actingAs($owner)->get(route('committees.index'))
         ->assertOk()
-        ->assertSee('حكام الحسابات')
-        ->assertSee('الحكام بالاسم')
-        ->assertSee('حسابات:')
-        ->assertSee('بالاسم:')
+        ->assertSee('الحكام: 3')
+        ->assertDontSee('حكام الحسابات')
+        ->assertDontSee('الحكام بالاسم')
         ->assertViewHas('committees', function ($committees) use ($committee) {
             $listed = $committees->firstWhere('id', $committee->id);
 
@@ -109,9 +108,7 @@ it('separates account-linked and manual judge counts in the committees list', fu
                 && $listed->users_count === 1
                 && $listed->manual_judges_count === 2;
         })
-        ->assertViewHas('summary', fn ($summary) => $summary['linked_judges'] === 1
-            && $summary['manual_judges'] === 2
-            && $summary['judges'] === 3);
+        ->assertViewHas('summary', fn ($summary) => $summary['judges'] === 3);
 });
 
 it('does not treat manual judges as evaluation or result-completion judges', function () {

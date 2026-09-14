@@ -52,7 +52,7 @@
                     @foreach($availableTransitions as $transition)
                         @php($isEvaluationRollback = $currentLifecycleState === \App\Services\CompetitionLifecycleService::EVALUATION && $transition['state'] === \App\Services\CompetitionLifecycleService::REGISTRATION_CLOSED)
                         @if($isEvaluationRollback)
-                            <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#evaluation-rollback-modal">العودة إلى {{ $transition['label'] }}</button>
+                            <button type="button" class="btn btn-outline-warning" data-evaluation-rollback-trigger x-data x-on:click.prevent="$dispatch('open-modal', 'evaluation-rollback')">العودة إلى {{ $transition['label'] }}</button>
                         @else
                             <form method="POST" action="{{ route('competitions.status.update', $competition) }}" class="d-inline">
                                 @csrf
@@ -65,27 +65,20 @@
                 </div>
             </div>
             @if(collect($availableTransitions)->contains('state', \App\Services\CompetitionLifecycleService::REGISTRATION_CLOSED) && $currentLifecycleState === \App\Services\CompetitionLifecycleService::EVALUATION)
-                <div class="modal fade" id="evaluation-rollback-modal" tabindex="-1" aria-labelledby="evaluation-rollback-title" aria-hidden="true">
-                    <div class="modal-dialog">
-                        <form method="POST" action="{{ route('competitions.status.update', $competition) }}" class="modal-content">
-                            @csrf
-                            <input type="hidden" name="status" value="{{ \App\Services\CompetitionLifecycleService::REGISTRATION_CLOSED }}">
-                            <input type="hidden" name="expected_status" value="{{ $competition->status }}">
-                            <div class="modal-header">
-                                <h2 class="modal-title fs-5" id="evaluation-rollback-title">تأكيد العودة إلى مرحلة سابقة</h2>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
-                            </div>
-                            <div class="modal-body">
-                                <p class="mb-2">الحالة الحالية: <strong>{{ $currentLifecycleLabel }}</strong></p>
-                                <p class="mb-0">الحالة المستهدفة: <strong>التسجيل مغلق</strong></p>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
-                                <button type="submit" class="btn btn-warning">تأكيد العودة إلى التسجيل مغلق</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                <x-modal name="evaluation-rollback" focusable>
+                    <form method="POST" action="{{ route('competitions.status.update', $competition) }}" class="p-4">
+                        @csrf
+                        <input type="hidden" name="status" value="{{ \App\Services\CompetitionLifecycleService::REGISTRATION_CLOSED }}">
+                        <input type="hidden" name="expected_status" value="{{ $competition->status }}">
+                        <h2 class="h5 mb-3">تأكيد العودة إلى مرحلة سابقة</h2>
+                        <p class="mb-2">الحالة الحالية: <strong>{{ $currentLifecycleLabel }}</strong></p>
+                        <p class="mb-4">الحالة المستهدفة: <strong>التسجيل مغلق</strong></p>
+                        <div class="d-flex flex-wrap justify-content-end gap-2">
+                            <button type="button" class="btn btn-outline-secondary" x-on:click="$dispatch('close')">إلغاء</button>
+                            <button type="submit" class="btn btn-warning">تأكيد العودة إلى التسجيل مغلق</button>
+                        </div>
+                    </form>
+                </x-modal>
             @endif
         @endif
         <div class="card hafez-card border-0 mb-4">

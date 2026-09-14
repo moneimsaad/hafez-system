@@ -856,6 +856,7 @@ test('evaluation list only shows next-stage navigation for an authorized complet
     $this->actingAs($owner)->get(route('evaluations.index', $context))
         ->assertOk()
         ->assertSee(route('results.index'), false)
+        ->assertSee('الانتقال إلى المرحلة التالية')
         ->assertViewHas('nextStageAvailable', true);
     expect($competition->fresh()->status)->toBe('Evaluation')
         ->and(Result::query()->where('competition_id', $competition->id)->count())->toBe(0);
@@ -895,6 +896,7 @@ test('evaluation list exposes edit only for the current judges unambiguous assig
         ->assertSee(route('evaluations.show', $ownEvaluation), false)
         ->assertSee('data-evaluation-row', false)
         ->assertSee("event.target.closest('a, button, input, select, textarea, label, form')", false)
+        ->assertDontSee('class="btn btn-sm btn-outline-secondary">عرض التفاصيل</a>', false)
         ->assertViewHas('editableCommitteeIds', fn ($ids) => ($ids[$ownEvaluation->id] ?? null) === $committee->id && ! array_key_exists($otherEvaluation->id, $ids));
 
     $this->actingAs($owner)->get(route('evaluations.index', ['competition_id' => $competition->id, 'branch_id' => $branch->id]))

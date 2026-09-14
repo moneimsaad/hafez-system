@@ -54,8 +54,6 @@ class CommitteeController extends Controller
             'branches' => CompetitionBranch::query()->with('competition')->whereIn('id', $branchIds)->orderBy('name')->get(),
             'summary' => [
                 'committees' => (clone $authorizedQuery)->count(),
-                'linked_judges' => $linkedJudgeCount,
-                'manual_judges' => $manualJudgeCount,
                 'judges' => $linkedJudgeCount + $manualJudgeCount,
                 'students' => CommitteeStudent::query()->whereIn('committee_id', $authorizedCommitteeIds)->count(),
             ],
