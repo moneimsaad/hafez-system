@@ -2,6 +2,12 @@
 
 Hafez System is a Laravel-based platform for managing educational competitions from initial setup through public certificate verification.
 
+## 🚀 Live Demo
+
+You can try the deployed version here:
+
+https://hafezsystem.rf.gd/
+
 ## Project overview
 
 The platform centralizes competition administration, participant registration, committee assignment, evaluation, results, and certificates in one workflow. It reduces manual coordination, improves data consistency, and gives participants a clear way to review registration information and verify issued certificates.
