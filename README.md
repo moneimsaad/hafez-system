@@ -123,9 +123,10 @@ npm run build
 - Set `APP_ENV=production` and `APP_DEBUG=false` in production.
 - Build assets with `npm run build` and deploy the generated `public/build` assets. `node_modules` is not required on the web server.
 - On hosting with a persistent worker, use `QUEUE_CONNECTION=database` and keep a queue worker running for OTP email delivery.
-- For an InfinityFree demonstration deployment, use `QUEUE_CONNECTION=sync` in that deployment's environment because persistent workers are unavailable. Local development remains configured for the database queue.
-- Run migrations against the deployment database and ensure the application can write to the required storage directories.
-- Run `php artisan storage:link` where supported so public certificate files can be served correctly.
+- For an InfinityFree demonstration deployment, run `powershell -ExecutionPolicy Bypass -File .\scripts\prepare-infinityfree.ps1` locally and use the generated package. It preserves `public/index.php`, includes `public/build`, and adds the required `htdocs` rewrite automatically.
+- InfinityFree deployments must use `QUEUE_CONNECTION=sync`, file-based session/cache drivers, and environment-only SMTP credentials because persistent workers and server-side Artisan access are unavailable.
+- Run migrations or import the prepared schema through the hosting database tool, and ensure the application can write to the required storage directories.
+- Do not move `public` contents into the web root or create a `public/storage` symlink. The deployment package maps public storage through its root `.htaccess`.
 - Certificate generation requires writable public storage and a correctly configured application URL.
 
 ## Security notes
